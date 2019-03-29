@@ -14,6 +14,7 @@ from matplotlib import pyplot as plt
 from torchvision import transforms
 from torchvision.datasets import FashionMNIST
 from torch.utils import data
+from torch import nn
 
 def data_iter(batch_size, features, labels):
     """Iterate through a data set."""
@@ -55,7 +56,9 @@ def load_data_fashion_mnist(batch_size, resize=None, root=os.path.join('~', 'dat
     """Download the fashion mnist dataset and then load into memory."""
     root = os.path.expanduser(root)
     if resize is None:
-        transformer = transforms.ToTensor()
+        transformer = transforms.Compose([
+            transforms.ToTensor()
+        ])
     else:
         transformer = transforms.Compose([
             transforms.Resize(resize),
@@ -81,12 +84,19 @@ def get_fashion_mnist_labels(labels):
                    'sandal', 'shirt', 'sneaker', 'bag', 'ankle boot']
     return [text_labels[int(i)] for i in labels]
 
+class FlattenLayer(nn.Module):
+    def __init__(self):
+        super(FlattenLayer, self).__init__()
+    def forward(self, x): # x shape: (batch, *, *, ...)
+        return x.view(x.shape[0], -1)
+
 def train_ch3(net, train_iter, test_iter, loss, num_epochs, batch_size, params=None, lr=None, optimizer=None):
     for epoch in range(num_epochs):
         train_l_sum, train_acc_sum, n = 0.0, 0.0, 0
         for X, y in train_iter:
             y_hat = net(X)
             l = loss(y_hat, y).sum()
+            
             if optimizer is not None:
                 optimizer.zero_grad()
             elif params is not None and params[0].grad is not None:
@@ -102,3 +112,37 @@ def train_ch3(net, train_iter, test_iter, loss, num_epochs, batch_size, params=N
             n += y.shape[0]
         test_acc = evaluate_accuracy(test_iter, net)
         print('epoch %d, loss %.4f, train acc %.3f, test acc %.3f' % (epoch + 1, train_l_sum / n, train_acc_sum / n, test_acc))
+        
+def semilogy(x_vals, y_vals, x_label, y_label, x2_vals=None, y2_vals=None, legend=None, figsize=(3.5, 2.5)):
+    set_figsize(figsize)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.semilogy(x_vals, y_vals)
+    if x2_vals and y2_vals:
+        plt.semilogy(x2_vals, y2_vals, linestyle=':')
+        plt.legend(legend)
+        
+def fit_and_plot(train_features, test_features, train_labels, test_labels):
+    net = nn.Linear(train_features.shape[1], 1)
+    init.normal_(net.weight)
+    batch_size = min(10, train_labels.shape[0])
+    train_iter = data.DataLoader(data.TensorDataset(train_features, train_labels), batch_size, shuffle=True)
+    optimizer = optim.SGD(net.parameters(), lr=0.01)
+    train_ls, test_ls = [], []
+    for _ in range(num_epochs):
+        for X, y in train_iter:
+            l = loss(net(X), y.view(-1, 1))
+            optimizer.zero_grad()
+            l.backward()
+            optimizer.step()
+        train_labels = train_labels.view(-1, 1)
+        test_labels = test_labels.view(-1, 1)
+        train_ls.append(loss(net(train_features), train_labels).item())
+        test_ls.append(loss(net(test_features), test_labels).item())
+    print('final epoch: train loss', train_ls[-1], 'test loss', test_ls[-1])
+    semilogy(range(1, num_epochs + 1), train_ls, 'epochs', 'loss',
+             range(1, num_epochs + 1), test_ls, ['train', 'test'])
+    print('weight:', net.weight.data, '\nbias:', net.bias.data)
+    
+def squared_loss(y_hat, y): 
+    return (y_hat - y.view(y_hat.size())) ** 2 / 2
