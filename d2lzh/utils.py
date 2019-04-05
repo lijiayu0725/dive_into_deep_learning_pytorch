@@ -15,6 +15,7 @@ from torchvision import transforms
 from torchvision.datasets import FashionMNIST
 from torch.utils import data
 from torch import nn
+from torch.nn import init
 
 def data_iter(batch_size, features, labels):
     """Iterate through a data set."""
@@ -71,12 +72,14 @@ def load_data_fashion_mnist(batch_size, resize=None, root=os.path.join('~', 'dat
     test_iter = data.DataLoader(mnist_test, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     return train_iter, test_iter
 
-def evaluate_accuracy(data_iter, net):
-    acc_sum, n = 0.0, 0
-    for X, y in data_iter:
-        acc_sum += (net(X).argmax(dim=1) == y).float().sum().item()
-        n += y.shape[0]
-    return acc_sum / n
+
+
+# def evaluate_accuracy(data_iter, net):
+#     acc_sum, n = 0.0, 0
+#     for X, y in data_iter:
+#         acc_sum += (net(X).argmax(dim=1) == y).float().sum().item()
+#         n += y.shape[0]
+#     return acc_sum / n
 
 def get_fashion_mnist_labels(labels):
     """Get text label for fashion mnist."""
@@ -146,3 +149,43 @@ def fit_and_plot(train_features, test_features, train_labels, test_labels):
     
 def squared_loss(y_hat, y): 
     return (y_hat - y.view(y_hat.size())) ** 2 / 2
+
+def corr2d(X, K):
+    h, w = K.shape
+    Y = torch.zeros(X.shape[0] - h + 1, X.shape[1] - w + 1)
+    for i in range(Y.shape[0]):
+        for j in range(Y.shape[1]):
+            Y[i, j] = (X[i: i + h, j: j + w] * K).sum()
+    return Y
+
+def train_ch5(net, train_iter, test_iter, batch_size, optimizer, device, num_epochs):
+    print('training on', device)
+    criterion = nn.CrossEntropyLoss()
+    for epoch in range(num_epochs):
+        train_l_sum, train_acc_sum, n, start = 0.0, 0.0, 0, time.time()
+        for X, y in train_iter:
+            X, y = X.to(device), y.to(device)
+            
+            y_hat = net(X)
+            l = criterion(y_hat, y)
+            optimizer.zero_grad()
+            l.backward()
+            optimizer.step()
+            train_l_sum += l.item()
+            train_acc_sum += (y_hat.argmax(dim=1) == y).data.sum().item()
+            n += y.shape[0]
+        test_acc = evaluate_accuracy(test_iter, net, device)
+        print('epoch %d, loss %.4f, train acc %.3f, test acc %.3f, '
+              'time %.1f sec'
+              % (epoch + 1, train_l_sum / n, train_acc_sum / n, test_acc,
+                 time.time() - start))
+        
+def evaluate_accuracy(data_iter, net, device):
+    acc_sum, n = torch.tensor([0], device=device), 0
+    with torch.no_grad():
+        for X, y in data_iter:
+            X = X.to(device)
+            y = y.to(device)
+            acc_sum += (net(X).argmax(dim=1) == y).float().sum()
+            n += y.shape[0]
+    return acc_sum.item() / n
