@@ -16,6 +16,7 @@ from torchvision.datasets import FashionMNIST
 from torch.utils import data
 from torch import nn
 from torch.nn import init
+from torch.nn import functional as F
 
 def data_iter(batch_size, features, labels):
     """Iterate through a data set."""
@@ -160,6 +161,7 @@ def corr2d(X, K):
 
 def train_ch5(net, train_iter, test_iter, batch_size, optimizer, device, num_epochs):
     print('training on', device)
+    net = net.to(device)
     criterion = nn.CrossEntropyLoss()
     for epoch in range(num_epochs):
         train_l_sum, train_acc_sum, n, start = 0.0, 0.0, 0, time.time()
@@ -189,3 +191,9 @@ def evaluate_accuracy(data_iter, net, device):
             acc_sum += (net(X).argmax(dim=1) == y).float().sum()
             n += y.shape[0]
     return acc_sum.item() / n
+
+class GlobalAvgPool2d(nn.Module):
+    def __init__(self):
+        super(GlobalAvgPool2d, self).__init__()
+    def forward(self, x):
+        return F.avg_pool2d(x, kernel_size=x.shape[2:])
