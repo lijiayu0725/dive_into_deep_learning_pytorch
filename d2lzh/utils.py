@@ -54,7 +54,7 @@ def show_fashion_mnist(images, labels):
         f.axes.get_xaxis().set_visible(False)
         f.axes.get_yaxis().set_visible(False)
         
-def load_data_fashion_mnist(batch_size, resize=None, root=os.path.join('~', 'datasets')):
+def load_data_fashion_mnist(batch_size, resize=None, root=os.path.join('~', 'datasets/FashionMNIST')):
     """Download the fashion mnist dataset and then load into memory."""
     root = os.path.expanduser(root)
     if resize is None:
@@ -66,21 +66,12 @@ def load_data_fashion_mnist(batch_size, resize=None, root=os.path.join('~', 'dat
             transforms.Resize(resize),
             transforms.ToTensor()
         ])
-    mnist_train = FashionMNIST(root, train=True, transform=transformer)
-    mnist_test = FashionMNIST(root, train=False, transform=transformer)
+    mnist_train = FashionMNIST(root, train=True, transform=transformer, download=False)
+    mnist_test = FashionMNIST(root, train=False, transform=transformer, download=False)
     num_workers = 0 if sys.platform.startswith('win32') else 4
     train_iter = data.DataLoader(mnist_train, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     test_iter = data.DataLoader(mnist_test, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     return train_iter, test_iter
-
-
-
-# def evaluate_accuracy(data_iter, net):
-#     acc_sum, n = 0.0, 0
-#     for X, y in data_iter:
-#         acc_sum += (net(X).argmax(dim=1) == y).float().sum().item()
-#         n += y.shape[0]
-#     return acc_sum / n
 
 def get_fashion_mnist_labels(labels):
     """Get text label for fashion mnist."""
