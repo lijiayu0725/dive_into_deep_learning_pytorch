@@ -17,6 +17,7 @@ from torch.utils import data
 from torch import nn
 from torch.nn import init
 from torch.nn import functional as F
+from torch import optim
 
 def data_iter(batch_size, features, labels):
     """Iterate through a data set."""
@@ -188,3 +189,112 @@ class GlobalAvgPool2d(nn.Module):
         super(GlobalAvgPool2d, self).__init__()
     def forward(self, x):
         return F.avg_pool2d(x, kernel_size=x.shape[2:])
+    
+def show_trace_2d(f, results):  # 本函数将保存在d2lzh包中方便以后使用
+    plt.plot(*zip(*results), '-o', color='#ff7f0e')
+    x1, x2 = np.meshgrid(np.arange(-5.5, 1.0, 0.1), np.arange(-3.0, 1.0, 0.1))
+    plt.contour(x1, x2, f(x1, x2), colors='#1f77b4')
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    
+def train_2d(optimizer):
+    x1, x2, s1, s2 = -5, -2, 0, 0
+    result = [(x1, x2)]
+    for i in range(20):
+        x1, x2, s1, s2 = optimizer(x1, x2, s1, s2)
+        result.append((x1, x2))
+    print('epoch %d, x1 %f, x2 %f' % (i + 1, x1, x2))
+    return result
+
+def get_data_ch7():
+    data = np.genfromtxt('data/airfoil_self_noise.dat', delimiter='\t')
+    data = (data - data.mean(axis=0)) / data.std(axis=0)
+    return torch.tensor(data[:1500, :-1], dtype=torch.float), torch.tensor(data[:1500, -1], dtype=torch.float)
+
+def train_ch7(trainer_fn, states, hyperparams, features, labels, batch_size=10, num_epochs=2):
+    net, loss = linreg, squared_loss
+    w = torch.randn((features.shape[1], 1)) * 0.01
+    b = torch.zeros(1)
+    w.requires_grad=True
+    b.requires_grad=True
+    
+    def eval_loss():
+        return loss(net(features, w, b), labels).mean().item()
+    
+    ls = [eval_loss()]
+    data_iter =  data.DataLoader(data.TensorDataset(features, labels), batch_size, shuffle=True)
+    for _ in range(num_epochs):
+        start = time.time()
+        for batch_i, (X, y) in enumerate(data_iter):
+            if w.grad is not None:
+                w.grad.zero_()
+            if b.grad is not None:
+                b.grad.zero_()
+            l = loss(net(X, w, b), y).mean() # 使⽤平均损失
+            l.backward()
+            trainer_fn([w, b], states, hyperparams) # 迭代模型参数
+            if (batch_i + 1) * batch_size % 100 == 0:
+                ls.append(eval_loss()) # 每100个样本记录下当前训练误差
+    # 打印结果和作图
+    print('loss: %f, %f sec per epoch' % (ls[-1], time.time() - start))
+    set_figsize()
+    plt.plot(np.linspace(0, num_epochs, len(ls)), ls)
+    plt.xlabel('epoch')
+    plt.ylabel('loss')
+    
+def train_pytorch_ch7(lr, features, labels, batch_size=10, op='SGD', num_epochs=2, momentum=0, alpha=1):
+    # 初始化模型
+    
+    net = nn.Sequential(
+        nn.Linear(features.shape[1], 1)
+    )
+    
+    init.normal_(net[0].weight, std=0.01)
+    loss = torch.nn.MSELoss()
+
+    def eval_loss():
+        with torch.no_grad():
+            l = loss(net(features).squeeze(), labels).item()
+        return l
+      
+    ls = [eval_loss() / 2]
+
+    data_iter = data.DataLoader(data.TensorDataset(features, labels), batch_size=batch_size, shuffle=True)
+    # 创建Trainer实例来迭代模型参数
+    if op == 'sgd':
+        optimizer = optim.SGD(net.parameters(), lr=lr, momentum=momentum)
+    elif op == 'adagrad':
+        optimizer = optim.Adagrad(net.parameters(), lr=lr)
+    elif op == 'rmsprop':
+        optimizer = optim.RMSprop(net.parameters(), lr=lr, alpha=alpha)
+    elif op == 'adadelta':
+        optimizer = optim.Adadelta(net.parameters(), rho=lr)
+    elif op == 'adam':
+        optimizer = optim.Adam(net.parameters(), lr=lr)
+    for _ in range(num_epochs):
+        start = time.time()
+        for batch_i, (X, y) in enumerate(data_iter):
+            net.zero_grad()
+            y_hat = net(X)
+            l = loss(y_hat.squeeze(), y)
+            l.backward()
+            optimizer.step() # 在Trainer实例里做梯度平均
+            if (batch_i + 1) * batch_size % 100 == 0:
+                ls.append(eval_loss() / 2)
+               
+    # 打印结果和作图
+    print('loss: %f, %f sec per epoch' % (ls[-1], time.time() - start))
+    set_figsize()
+    plt.plot(np.linspace(0, num_epochs, len(ls)), ls)
+    plt.xlabel('epoch')
+    plt.ylabel('loss')
+    
+def show_images(imgs, num_rows, num_cols, scale=2):
+    figsize = (num_cols * scale, num_rows * scale)
+    _, axes = plt.subplots(num_rows, num_cols, figsize=figsize)
+    for i in range(num_rows):
+        for j in range(num_cols):
+            axes[i][j].imshow(imgs[i * num_cols + j])
+            axes[i][j].axes.get_xaxis().set_visible(False)
+            axes[i][j].axes.get_yaxis().set_visible(False)
+    return axes
